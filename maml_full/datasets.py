@@ -23,6 +23,7 @@ class OmniglotDataset(Dataset):
 
         # Index of dataframe has direct correspondence to item in dataset
         self.df = pd.DataFrame(self.index_subset(self.subset))
+        self.df = self.df.assign(id=self.df.index.values)
 
         # Converting arbitrary class names of dataset into ordered 0 - (num_classes - 1) integers
         self.unique_characters = sorted(self.df['class_name'].unique())
@@ -49,8 +50,8 @@ class OmniglotDataset(Dataset):
         return len(self.df)
 
     def num_classes(self):
-        return len(self.df['num_classes'].unique())
-    
+        return len(self.df['class_name'].unique())
+
     @staticmethod
     def index_subset(subset):
         """
@@ -91,6 +92,7 @@ class OmniglotDataset(Dataset):
         progress_bar.close()
         return images
 
+
 class MiniImageNet(Dataset):
     def __init__(self, subset):
         """
@@ -103,18 +105,12 @@ class MiniImageNet(Dataset):
             A list of dicts containing info about all the image files in a particular subset of the 
             MiniImageNet dataset
         """
-    def __init__(self, subset):
-        """
-            Dataset class representing Omniglot dataset
-            Arguments:
-                subset: whether using background or evaluation set
-        """
         if subset not in ('background', 'evaluation'):
-            raise(ValueError, 'not a valid subset(background, evaluation)')
+            raise(ValueError, 'subset must be one of (background, evaluation)')
         self.subset = subset
 
-        # Index of dataframe has direct correspondence to item in dataset
         self.df = pd.DataFrame(self.index_subset(self.subset))
+        self.df = self.df.assign(id=self.df.index.values)
 
         # Converting arbitrary class names of dataset into ordered 0 - (num_classes - 1) integers
         self.unique_characters = sorted(self.df['class_name'].unique())
@@ -125,24 +121,28 @@ class MiniImageNet(Dataset):
         self.datasetid_to_filepath = self.df.to_dict()['filepath']
         self.datasetid_to_class_id = self.df.to_dict()['class_id']
 
+        # Setup Transforms
+        self.transform = transforms.Compose([
+            transforms.CenterCrop(224),
+            transforms.resize(84),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225])
+        ])
+
     def __getitem__(self, item):
-        instance = io.imread(self.datasetid_to_filepath[item])
-        # reindex to channels first format for pytorch
-        instance = instance[np.newaxis, :, :]
-
-        # Normalise to 0-1
-        instance = (instance - instance.min() / (instance.max() - instance.min()))
-
+        instance = Image.open(self.datasetid_to_filepath[item])
+        instance = self.transform(instance)
         label = self.datasetid_to_class_id[item]
 
-        return torch.from_numpy(instance), label
+        return instance, label
 
     def __len__(self):
         return len(self.df)
 
     def num_classes(self):
-        return len(self.df['num_classes'].unique())
-    
+        return len(self.df['class_name'].unique())
+
     @staticmethod
     def index_subset(subset):
         """
@@ -152,30 +152,29 @@ class MiniImageNet(Dataset):
             subset: name of subset
 
         Returns:
-            A list of dicts containing info about all the image files in a particular subset of the 
-            Omniglot dataset
+            A list of dicts containing info about all the image files in a
+            particular subset of the miniImageNet dataset
         """
         images = []
         print('Indexing {}...'.format(subset))
-        
-        # total for tqdm bar
+        # Find total for progress bar
         subset_len = 0
-        for root, folders, files in os.walk(DATA_PATH + '/Omniglot/images_{}/'.format(subset)):
+        for root, folders, files in os.walk(DATA_PATH +
+                                            '/miniImageNet/images_{}/'.format(subset)):
             subset_len += len([f for f in files if f.endswith('.png')])
 
         progress_bar = tqdm(total=subset_len)
-        for root, folders, files in os.walk(DATA_PATH + '/Omniglot/images_{}/'.format(subset)):
+        for root, folders, files in os.walk(DATA_PATH +
+                                            '/miniImageNet/images_{}/'.format(subset)):
             if len(files) == 0:
                 continue
 
-            alphabet = root.split('/')[-2]
-            class_name = '{}.{}'.format(alphabet, root.split('/')[-1])
+            class_name = root.split('/')[-1]
 
             for f in files:
                 progress_bar.update(1)
                 images.append({
                     'subset': subset,
-                    'alphabet': alphabet,
                     'class_name': class_name,
                     'filepath': os.path.join(root, f)
                 })
