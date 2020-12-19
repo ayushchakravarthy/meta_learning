@@ -52,8 +52,10 @@ elif args.dataset == 'miniImageNet':
 else:
     raise(ValueError('Unsupported Dataset'))
 
-param_str = f'{args.dataset}_order={args.order}_n={args.n}_k={args.k}_metabatch={args.meta_batch_size}_' \
-            f'train_steps={args.inner_train_steps}_val_steps={args.inner_val_steps}'
+param_str = f'{args.dataset}_order={args.order}_n={args.n}_k={args.k}_' \
+            f'metabatch={args.meta_batch_size}_' \
+            f'train_steps={args.inner_train_steps}_' \
+            f'val_steps={args.inner_val_steps}'
 print(param_str)
 
 
@@ -61,7 +63,8 @@ print(param_str)
 background = dataset_class('background')
 background_taskloader = DataLoader(
     background,
-    batch_sampler=NShotTaskSampler(background, args.epoch_len, n=args.n, k=args.k, q=args.q,
+    batch_sampler=NShotTaskSampler(background, args.epoch_len, n=args.n,
+                                   k=args.k, q=args.q,
                                    num_tasks=args.meta_batch_size),
     num_workers=8
 )
@@ -69,7 +72,8 @@ background_taskloader = DataLoader(
 evaluation = dataset_class('evaluation')
 evaluation_taskloader = DataLoader(
     evaluation,
-    batch_sampler=NShotTaskSampler(evaluation, args.eval_batches, n=args.n, k=args.k, q=args.q,
+    batch_sampler=NShotTaskSampler(evaluation, args.eval_batches, n=args.n,
+                                   k=args.k, q=args.q,
                                    num_tasks=args.meta_batch_size),
     num_workers=8
 )
@@ -77,38 +81,44 @@ evaluation_taskloader = DataLoader(
 
 # Training
 print(f'Training MAML on {args.dataset}...')
-meta_model = FewShotClassifier(num_input_channels, args.k, fc_layer_size).to(device, dtype=torch.double)
+meta_model = FewShotClassifier(num_input_channels,
+                               args.k, fc_layer_size).to(device,
+                                                         dtype=torch.double)
 meta_optimiser = torch.optim.Adam(meta_model.parameters(), lr=args.meta_lr)
 loss_fn = nn.CrossEntropyLoss().to(device)
+
 
 def prepare_meta_batch(n, k, q, meta_batch_size):
     def prepare_meta_batch_(batch):
         x, y = batch
         # reshape to meta_batch_size number of tasks
         # each task - n*k support samples, q*k query samples
-        x = x.reshape(meta_batch_size, n*k + q*k, num_input_channels, x.shape[-2], x.shape[-1])
+        x = x.reshape(meta_batch_size, n*k + q*k,
+                      num_input_channels, x.shape[-2], x.shape[-1])
         x = x.double().to(device)
         y = create_nshot_task_label(k, q).cuda().repeat(meta_batch_size)
 
         return x, y
     return prepare_meta_batch_
 
+
 callbacks = [
     EvaluateFewShot(
-    eval_fn=meta_gradient_step,
+        eval_fn=meta_gradient_step,
         num_tasks=args.eval_batches,
         n_shot=args.n,
         k_way=args.k,
         q_queries=args.q,
         taskloader=evaluation_taskloader,
-        prepare_batch=prepare_meta_batch(args.n, args.k, args.q, args.meta_batch_size),
+        prepare_batch=prepare_meta_batch(args.n, args.k,
+                                         args.q, args.meta_batch_size),
         # MAML kwargs
         inner_train_steps=args.inner_val_steps,
         inner_lr=args.inner_lr,
         device=device,
         order=args.order,
     ),
-    #fix
+    # fix
     ModelCheckpoint(
         filepath=PATH + f'/models/maml/{param_str}.pth',
         monitor=f'val_{args.n}-shot_{args.k}-way_acc'
@@ -123,13 +133,16 @@ fit(
     loss_fn,
     epochs=args.epochs,
     dataloader=background_taskloader,
-    prepare_batch=prepare_meta_batch(args.n, args.k, args.q, args.meta_batch_size),
+    prepare_batch=prepare_meta_batch(args.n, args.k,
+                                     args.q, args.meta_batch_size),
     callbacks=callbacks,
     metrics=['categorical_accuracy'],
     fit_function=meta_gradient_step,
-    fit_function_kwargs={'n_shot': args.n, 'k_way': args.k, 'q_queries': args.q,
+    fit_function_kwargs={'n_shot': args.n,
+                         'k_way': args.k, 'q_queries': args.q,
                          'train': True,
-                         'order': args.order, 'device': device, 'inner_train_steps': args.inner_train_steps,
+                         'order': args.order, 'device': device,
+                         'inner_train_steps': args.inner_train_steps,
                          'inner_lr': args.inner_lr},
 )
 
