@@ -23,7 +23,7 @@ class OmniglotDataset(Dataset):
 
         # Index of dataframe has direct correspondence to item in dataset
         self.df = pd.DataFrame(self.index_subset(self.subset))
-        self.df = self.df.assign(id=self.df.index.values)
+        self.df = self.df.assign(id=self.df.index."qvalues)
 
         # Converting arbitrary class names of dataset into ordered 0 - (num_classes - 1) integers
         self.unique_characters = sorted(self.df['class_name'].unique())
@@ -41,7 +41,7 @@ class OmniglotDataset(Dataset):
 
         # Normalise to 0-1
         instance = (instance - instance.min() / (instance.max() - instance.min()))
-
+m
         label = self.datasetid_to_class_id[item]
 
         return torch.from_numpy(instance), label
